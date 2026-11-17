@@ -165,7 +165,7 @@ function karte(p){
   const keepa=p.asin&&/^[A-Z0-9]{10}$/.test(p.asin)?`<a class="btn" href="https://keepa.com/#!product/3-${p.asin}" target="_blank" rel="noopener noreferrer">Amazon-Langzeitverlauf (Keepa)</a>`:"";
   return `<details data-id="${esc(p.id)}"${OFFEN.has(String(p.id))?" open":""}${p.status==="gekauft"?' style="opacity:.6"':""}><summary>
    <div class="t">${esc(p.name)}</div><div class="p">${eur(p.preis)}</div>
-   <div class="m">${p.shop?"günstigst bei "+esc(p.shop)+" · ":""}${esc(p.grund)}${p.preis_datum&&D.stand&&p.preis_datum!==D.stand?" · Preis vom "+esc(dm(p.preis_datum)):""}</div>
+   <div class="m">${p.idee?"Idee: "+esc(p.idee)+" · ":""}${p.shop?"günstigst bei "+esc(p.shop)+" · ":""}${esc(p.grund)}${typeof p.budget==="number"&&typeof p.preis==="number"&&p.preis>p.budget?` · <b style="color:var(--bad)">über Budget (${eur(p.budget)})</b>`:""}${p.preis_datum&&D.stand&&p.preis_datum!==D.stand?" · Preis vom "+esc(dm(p.preis_datum)):""}</div>
    <div class="st" style="color:var(${c})"><span>${s}${p.status!=="gekauft"?" – kaufen bis "+esc(dm(p.kaufen_bis)):""}</span><span class="more">Details ▾</span></div></summary>
    <div class="body"><div class="chart">${chart(p.verlauf)}</div>
    ${best?`<div class="btns"><a class="btn main" href="${best}" target="_blank" rel="noopener noreferrer">Zum günstigsten Shop${p.shop?" – "+esc(p.shop):""}</a></div>`:""}
