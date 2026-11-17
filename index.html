@@ -67,6 +67,13 @@ details[open] .more{visibility:hidden}
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .leer{background:var(--card);border:1px dashed var(--line);border-radius:12px;padding:16px;color:var(--muted);line-height:1.5}
 .small{font-size:.74rem;color:var(--muted)}
+.offen{background:var(--card);border:1px solid var(--bad);border-radius:12px;padding:12px;margin-bottom:16px;display:flex;flex-direction:column;gap:6px;font-size:.84rem}
+.offen b{color:var(--bad)}
+.offen ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.anote{font-size:.78rem;color:var(--muted);margin:-4px 0 8px}
+.anote.need{color:var(--bad)}
+.ohne{background:var(--card);border:1px dashed var(--bad);border-radius:12px;padding:10px 12px;font-size:.84rem;margin-bottom:8px}
+.ohne.plan{border-color:var(--line);color:var(--muted)}
 .key{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px}
 .key input{font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%}
 .fehler{color:var(--bad);font-size:.84rem}
@@ -102,6 +109,7 @@ const LS="preiswaechter-schluessel";
 const $=id=>document.getElementById(id);
 const store={get(){try{return localStorage.getItem(LS)}catch(e){return null}},set(v){try{localStorage.setItem(LS,v);return true}catch(e){return false}},del(){try{localStorage.removeItem(LS)}catch(e){}}};
 let D=null;
+let OFFEN=new Set();
 const eur=v=>(typeof v!=="number"||!isFinite(v))?"–":v.toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";
 const dm=s=>{if(typeof s!=="string")return"";const[y,m,d]=s.split("-");return d+"."+m+"."};
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -155,12 +163,12 @@ function karte(p){
   const extra=[["idealo","idealo"],["amazon","Amazon"],["mediamarkt","MediaMarkt"],["thalia","Thalia"]].filter(([k])=>safeUrl(links[k]))
     .map(([k,n])=>`<a class="btn" href="${safeUrl(links[k])}" target="_blank" rel="noopener noreferrer">${n}</a>`).join("");
   const keepa=p.asin&&/^[A-Z0-9]{10}$/.test(p.asin)?`<a class="btn" href="https://keepa.com/#!product/3-${p.asin}" target="_blank" rel="noopener noreferrer">Amazon-Langzeitverlauf (Keepa)</a>`:"";
-  return `<details${p.status==="gekauft"?' style="opacity:.6"':""}><summary>
+  return `<details data-id="${esc(p.id)}"${OFFEN.has(String(p.id))?" open":""}${p.status==="gekauft"?' style="opacity:.6"':""}><summary>
    <div class="t">${esc(p.name)}</div><div class="p">${eur(p.preis)}</div>
    <div class="m">${p.shop?"günstigst bei "+esc(p.shop)+" · ":""}${esc(p.grund)}${p.preis_datum&&D.stand&&p.preis_datum!==D.stand?" · Preis vom "+esc(dm(p.preis_datum)):""}</div>
    <div class="st" style="color:var(${c})"><span>${s}${p.status!=="gekauft"?" – kaufen bis "+esc(dm(p.kaufen_bis)):""}</span><span class="more">Details ▾</span></div></summary>
    <div class="body"><div class="chart">${chart(p.verlauf)}</div>
-   ${best?`<div class="btns"><a class="btn main" href="${best}" target="_blank" rel="noopener noreferrer">Zum günstigsten Shop${p.shop?" ("+esc(p.shop)+")":""}</a></div>`:""}
+   ${best?`<div class="btns"><a class="btn main" href="${best}" target="_blank" rel="noopener noreferrer">Zum günstigsten Shop${p.shop?" – "+esc(p.shop):""}</a></div>`:""}
    ${shops?`<div class="shops">${shops}</div>`:""}
    <div class="btns">${extra}${keepa}</div></div></details>`;
 }
@@ -171,16 +179,33 @@ function render(){
   let hin="";
   if(alt!==null&&alt>8) hin+=`<div class="hinweis">Die letzte Prüfung ist ${alt} Tage her – lief der Mac?</div>`;
   if(Array.isArray(D.fehler)&&D.fehler.length) hin+=`<div class="hinweis">Letzte Prüfung mit ${D.fehler.length} Problem(en): ${D.fehler.map(esc).join("; ")}</div>`;
+  OFFEN=new Set([...document.querySelectorAll("details[open]")].map(d=>d.dataset.id));
   const P=Array.isArray(D.produkte)?D.produkte:[];
-  if(!P.length){$("liste").innerHTML=hin+`<div class="leer"><b>Noch keine Produkte beobachtet.</b><br>Nenn Claude die Interessen einer Person (z. B. „mag Kochen und Pflanzen“) – drei Vorschläge erscheinen hier nach der nächsten Prüfung.</div>`;return}
-  const g={};P.forEach(p=>{const k=JSON.stringify([p.datum,p.person,p.anlass]);(g[k]=g[k]||[]).push(p)});
-  $("liste").innerHTML=hin+Object.keys(g).sort().map(k=>{const[d,who,occ]=JSON.parse(k),n=tage(d);
-   return `<section class="occ"><div class="dot"></div><div class="when">${n===0?"heute":n===1?"morgen":n<0?"vorbei":"in "+n+" Tagen"} · ${esc(dm(d))}</div><div class="who">${esc(who)} – ${esc(occ)}</div>${g[k].map(karte).join("")}</section>`}).join("");
+  const A=Array.isArray(D.anlaesse)?D.anlaesse:[];
+  if(!P.length&&!A.length){$("liste").innerHTML=hin+`<div class="leer"><b>Noch keine Produkte beobachtet.</b><br>Nenn Claude die Interessen einer Person (z. B. „mag Kochen und Pflanzen“) – drei Vorschläge erscheinen hier nach der nächsten Prüfung.</div>`;return}
+  // Übersicht: wer hat noch kein Geschenk, wozu braucht Claude Infos
+  const ohne=A.filter(a=>!a.produkte&&a.status!=="geplant");
+  const infos=A.filter(a=>a.infos);
+  let box="";
+  if(ohne.length||infos.length){
+    box=`<section class="offen">${ohne.length?`<div><b>Noch ohne Geschenk:</b> ${ohne.map(a=>esc(a.person)+" ("+esc(dm(a.datum))+")").join(", ")}</div>`:""}
+    ${infos.length?`<div><b>Claude braucht Infos:</b><ul>${infos.map(a=>`<li>${esc(a.person)}: ${esc(a.infos)}</li>`).join("")}</ul></div>`:""}</section>`;
+  }
+  const g={};
+  A.forEach(a=>{const k=JSON.stringify([a.datum,a.person]);g[k]=g[k]||{a:null,p:[]};g[k].a=a});
+  P.forEach(p=>{const k=JSON.stringify([p.datum,p.person]);g[k]=g[k]||{a:null,p:[]};g[k].p.push(p)});
+  $("liste").innerHTML=hin+box+Object.keys(g).sort().map(k=>{const[d,who]=JSON.parse(k),n=tage(d),x=g[k];
+   const occ=x.a?x.a.anlass:(x.p[0]&&x.p[0].anlass)||"";
+   let notes="";
+   if(x.a&&x.a.notiz)notes+=`<div class="anote">${x.a.status==="geplant"?"Geplant: ":""}${esc(x.a.notiz)}</div>`;
+   if(x.a&&x.a.infos)notes+=`<div class="anote need">Infos gebraucht: ${esc(x.a.infos)}</div>`;
+   const leer=!x.p.length?(x.a&&x.a.status==="geplant"?"":`<div class="ohne">Noch kein Geschenk – sobald du Claude Infos gibst, erscheinen hier drei Vorschläge mit Preisen.</div>`):"";
+   return `<section class="occ"><div class="dot"></div><div class="when">${n===0?"heute":n===1?"morgen":n<0?"vorbei":"in "+n+" Tagen"} · ${esc(dm(d))}</div><div class="who">${esc(who)} – ${esc(occ)}</div>${notes}${leer}${x.p.map(karte).join("")}</section>`}).join("");
 }
 
 // ---- Installationshinweis (nur iPhone/iPad in Safari, nicht installiert)
 (function(){
-  const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  const ios=(/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1))&&!/CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
   const standalone=window.navigator.standalone||matchMedia("(display-mode: standalone)").matches;
   let zu=false;try{zu=localStorage.getItem("preiswaechter-install-zu")==="1"}catch(e){}
   if(ios&&!standalone&&!zu)$("install").hidden=false;
@@ -190,6 +215,7 @@ function render(){
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)laden()});
 setInterval(render,60000);
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
 laden();
 </script>
 </body>
