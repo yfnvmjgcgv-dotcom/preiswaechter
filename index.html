@@ -74,6 +74,11 @@ details[open] .more{visibility:hidden}
 .anote.need{color:var(--bad)}
 .ohne{background:var(--card);border:1px dashed var(--bad);border-radius:12px;padding:10px 12px;font-size:.84rem;margin-bottom:8px}
 .ohne.plan{border-color:var(--line);color:var(--muted)}
+.merk{margin-top:8px;padding-top:14px;border-top:2px solid var(--line)}
+.merk h2{font-family:var(--serif);font-size:1.3rem;margin:0 0 4px}
+.add{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.add input{font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%}
+.add .ok{color:var(--good);font-size:.8rem}
 .key{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px}
 .key input{font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%}
 .fehler{color:var(--bad);font-size:.84rem}
@@ -91,6 +96,11 @@ footer button{align-self:flex-start;background:none;border:0;padding:0;color:var
     <button id="installZu" aria-label="Hinweis schließen">×</button>
   </div>
   <div id="liste"></div>
+  <div id="merkAdd" class="add" hidden><label for="merkIn"><b>Auf die Merkliste setzen</b></label>
+   <input id="merkIn" autocomplete="off" placeholder="Produkt oder Link, z. B. „Garmin Fenix 8, Wunschpreis 600 €“">
+   <button id="merkBtn" class="btn main">Text für Claude kopieren</button>
+   <div class="small">Die App kann nichts an deinen Mac senden. Füge den kopierten Text in einen Claude-Chat ein – Claude nimmt das Produkt auf, der Preis erscheint nach der nächsten Prüfung.</div>
+   <div id="merkOk" class="ok" hidden></div></div>
   <section id="keyBox" class="key" hidden>
     <b>Schlüssel fehlt</b>
     <div class="small">Die Geschenkdaten sind verschlüsselt. Füge hier den Link oder Schlüssel aus der Datei „Preiswächter-Schlüssel“ in deinem iCloud Drive ein. Er wird nur auf diesem Gerät gespeichert.</div>
@@ -137,7 +147,7 @@ async function laden(){
   try{D=await entschluesseln(enc,k);$("keyBox").hidden=true;$("keyWeg").hidden=false;render()}
   catch(e){store.del();zeigeKey("Der Schlüssel passt nicht zu den Daten. Bitte erneut einfügen.")}
 }
-function zeigeKey(msg){$("stand").textContent="Verschlüsselt";$("liste").innerHTML="";$("keyBox").hidden=false;$("keyWeg").hidden=true;const e=$("keyErr");e.hidden=!msg;e.textContent=msg||""}
+function zeigeKey(msg){$("merkAdd").hidden=true;$("stand").textContent="Verschlüsselt";$("liste").innerHTML="";$("keyBox").hidden=false;$("keyWeg").hidden=true;const e=$("keyErr");e.hidden=!msg;e.textContent=msg||""}
 $("keyOk").addEventListener("click",()=>{const k=keyAus($("keyIn").value);if(!k){zeigeKey("Das sieht nicht wie ein Schlüssel aus. Bitte den ganzen Link einfügen.");return}store.set(k);$("keyIn").value="";laden()});
 $("keyWeg").addEventListener("click",()=>{store.del();D=null;zeigeKey()});
 
@@ -166,7 +176,7 @@ function karte(p){
   return `<details data-id="${esc(p.id)}"${OFFEN.has(String(p.id))?" open":""}${p.status==="gekauft"?' style="opacity:.6"':""}><summary>
    <div class="t">${esc(p.name)}</div><div class="p">${eur(p.preis)}</div>
    <div class="m">${p.idee?"Idee: "+esc(p.idee)+" · ":""}${p.shop?"günstigst bei "+esc(p.shop)+" · ":""}${esc(p.grund)}${typeof p.budget==="number"&&typeof p.preis==="number"&&p.preis>p.budget?` · <b style="color:var(--bad)">über Budget (${eur(p.budget)})</b>`:""}${p.preis_datum&&D.stand&&p.preis_datum!==D.stand?" · Preis vom "+esc(dm(p.preis_datum)):""}</div>
-   <div class="st" style="color:var(${c})"><span>${s}${p.status!=="gekauft"?" – kaufen bis "+esc(dm(p.kaufen_bis)):""}</span><span class="more">Details ▾</span></div></summary>
+   <div class="st" style="color:var(${c})"><span>${s}${p.status!=="gekauft"&&p.kaufen_bis?" – kaufen bis "+esc(dm(p.kaufen_bis)):""}${typeof p.wunschpreis==="number"?" · Wunschpreis "+eur(p.wunschpreis):""}</span><span class="more">Details ▾</span></div></summary>
    <div class="body"><div class="chart">${chart(p.verlauf)}</div>
    ${best?`<div class="btns"><a class="btn main" href="${best}" target="_blank" rel="noopener noreferrer">Zum günstigsten Shop${p.shop?" – "+esc(p.shop):""}</a></div>`:""}
    ${shops?`<div class="shops">${shops}</div>`:""}
@@ -174,15 +184,20 @@ function karte(p){
 }
 function render(){
   if(!D)return;
+  $("merkAdd").hidden=false;
   const alt=D.stand?Math.floor((Date.now()-new Date(D.stand+"T00:00:00"))/864e5):null;
   $("stand").textContent=D.stand?`Stand: ${dm(D.stand)}${D.stand.slice(0,4)} · nächste Prüfung in ca. ${Math.max(0,7-alt)} Tagen`:"Noch keine Prüfung gelaufen";
   let hin="";
   if(alt!==null&&alt>8) hin+=`<div class="hinweis">Die letzte Prüfung ist ${alt} Tage her – lief der Mac?</div>`;
   if(Array.isArray(D.fehler)&&D.fehler.length) hin+=`<div class="hinweis">Letzte Prüfung mit ${D.fehler.length} Problem(en): ${D.fehler.map(esc).join("; ")}</div>`;
   OFFEN=new Set([...document.querySelectorAll("details[open]")].map(d=>d.dataset.id));
-  const P=Array.isArray(D.produkte)?D.produkte:[];
+  const ALLE=Array.isArray(D.produkte)?D.produkte:[];
+  const P=ALLE.filter(p=>p.datum), M=ALLE.filter(p=>!p.datum);
   const A=Array.isArray(D.anlaesse)?D.anlaesse:[];
-  if(!P.length&&!A.length){$("liste").innerHTML=hin+`<div class="leer"><b>Noch keine Produkte beobachtet.</b><br>Nenn Claude die Interessen einer Person (z. B. „mag Kochen und Pflanzen“) – drei Vorschläge erscheinen hier nach der nächsten Prüfung.</div>`;return}
+  const merk=`<section class="merk"><h2>Für mich – Merkliste</h2><div class="small">Sachen, deren Preis du einfach im Blick behalten willst – ohne Anlass. Gemeldet wird ein neuer Tiefstpreis oder dein Wunschpreis.</div>
+   <div style="margin-top:10px">${M.length?M.map(karte).join(""):`<div class="leer">Noch nichts auf deiner Merkliste.</div>`}</div>
+</section>`;
+  if(!P.length&&!A.length){$("liste").innerHTML=hin+merk+`<div class="leer"><b>Noch keine Produkte beobachtet.</b><br>Nenn Claude die Interessen einer Person (z. B. „mag Kochen und Pflanzen“) – drei Vorschläge erscheinen hier nach der nächsten Prüfung.</div>`;return}
   // Übersicht: wer hat noch kein Geschenk, wozu braucht Claude Infos
   const ohne=A.filter(a=>!a.produkte&&a.status!=="geplant");
   const infos=A.filter(a=>a.infos);
@@ -200,7 +215,7 @@ function render(){
    if(x.a&&x.a.notiz)notes+=`<div class="anote">${x.a.status==="geplant"?"Geplant: ":""}${esc(x.a.notiz)}</div>`;
    if(x.a&&x.a.infos)notes+=`<div class="anote need">Infos gebraucht: ${esc(x.a.infos)}</div>`;
    const leer=!x.p.length?(x.a&&x.a.status==="geplant"?"":`<div class="ohne">Noch kein Geschenk – sobald du Claude Infos gibst, erscheinen hier drei Vorschläge mit Preisen.</div>`):"";
-   return `<section class="occ"><div class="dot"></div><div class="when">${n===0?"heute":n===1?"morgen":n<0?"vorbei":"in "+n+" Tagen"} · ${esc(dm(d))}</div><div class="who">${esc(who)} – ${esc(occ)}</div>${notes}${leer}${x.p.map(karte).join("")}</section>`}).join("");
+   return `<section class="occ"><div class="dot"></div><div class="when">${n===0?"heute":n===1?"morgen":n<0?"vorbei":"in "+n+" Tagen"} · ${esc(dm(d))}</div><div class="who">${esc(who)} – ${esc(occ)}</div>${notes}${leer}${x.p.map(karte).join("")}</section>`}).join("")+merk;
 }
 
 // ---- Installationshinweis (nur iPhone/iPad in Safari, nicht installiert)
@@ -212,6 +227,15 @@ function render(){
   $("installZu").addEventListener("click",()=>{$("install").hidden=true;try{localStorage.setItem("preiswaechter-install-zu","1")}catch(e){}});
 })();
 
+// Merkliste: Eingabe als Text für Claude kopieren (die App selbst sendet nichts)
+document.addEventListener("click",async ev=>{
+  if(!ev.target||ev.target.id!=="merkBtn")return;
+  const inp=$("merkIn"),ok=$("merkOk"),t=(inp.value||"").trim();
+  if(!t){ok.hidden=false;ok.style.color="var(--bad)";ok.textContent="Bitte erst ein Produkt oder einen Link eintragen.";return}
+  const text="Preiswächter – beobachte für mich: "+t;
+  try{await navigator.clipboard.writeText(text);ok.hidden=false;ok.style.color="";ok.textContent="Kopiert. Jetzt in einen Claude-Chat einfügen.";inp.value=""}
+  catch(e){inp.value=text;inp.select();ok.hidden=false;ok.style.color="";ok.textContent="Text markiert – bitte selbst kopieren und in einen Claude-Chat einfügen."}
+});
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)laden()});
 setInterval(render,60000);
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
