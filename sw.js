@@ -1,4 +1,4 @@
-const V = "pw-6b33fc6d48";
+const V = "pw-b3658a1cea";
 const DATA = "pw-daten";
 const FONTS_C = "pw-fonts";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];

@@ -60,7 +60,7 @@ details[open] .more{visibility:hidden}
 .shop{display:grid;grid-template-columns:1fr auto;gap:8px;font-size:.82rem;padding:6px 0;border-top:1px solid var(--line)}
 .shop a{color:var(--fg);text-decoration:none}
 .shop a::after{content:" ↗";color:var(--muted)}
-.shop span{font-variant-numeric:tabular-nums;font-weight:600}
+.shop .pr{font-variant-numeric:tabular-nums;font-weight:600}
 .btns{display:flex;flex-wrap:wrap;gap:8px}
 .btn{display:inline-block;padding:9px 14px;border-radius:10px;font-size:.84rem;font-weight:600;text-decoration:none;border:1px solid var(--line);color:var(--fg);background:none;font-family:inherit;cursor:pointer}
 .btn.main{background:var(--accent);border-color:var(--accent);color:var(--card)}
@@ -84,6 +84,13 @@ details[open] .more{visibility:hidden}
 .fehler{color:var(--bad);font-size:.84rem}
 footer{margin-top:18px;display:flex;flex-direction:column;gap:8px}
 footer button{align-self:flex-start;background:none;border:0;padding:0;color:var(--muted);font:inherit;font-size:.74rem;text-decoration:underline;cursor:pointer}
+.p.ueber,.bud.ueber{color:var(--bad)}
+.bud{font-weight:600;color:var(--muted)}
+.warnzeile{color:var(--warn)}
+.small a.link{color:var(--accent);text-decoration:none;font-weight:600}
+.anote.gut{color:var(--good);font-weight:700}
+details.fertig{opacity:.6}
+.btn.ok{border-color:var(--good);color:var(--good)}
 @media (prefers-reduced-motion:no-preference){details[open] .body{animation:in .18s ease-out}@keyframes in{from{opacity:.4}to{opacity:1}}}
 </style>
 </head>
@@ -109,7 +116,7 @@ footer button{align-self:flex-start;background:none;border:0;padding:0;color:var
     <div id="keyErr" class="fehler" hidden></div>
   </section>
   <footer>
-    <p class="small">Preise: Neuware inkl. Versand, nur große Shops. Wöchentlich geprüft vom Mac (idealo + Shops direkt). „Kaufen bis“ = Anlass minus 8 Tage.</p>
+    <p class="small">Preise: Neuware inkl. Versand, alle Shops bei idealo (kleinere Shops sind markiert, der günstigste große Shop steht daneben). Wöchentlich geprüft vom Mac. „Kaufen bis“ = Anlass minus 8 Tage.</p>
     <button id="keyWeg" hidden>Schlüssel auf diesem Gerät löschen</button>
   </footer>
 </main>
@@ -119,12 +126,112 @@ const $=id=>document.getElementById(id);
 const store={get(){try{return localStorage.getItem(LS)}catch(e){return null}},set(v){try{localStorage.setItem(LS,v);return true}catch(e){return false}},del(){try{localStorage.removeItem(LS)}catch(e){}}};
 let D=null;
 let OFFEN=new Set();
+// Gemeinsame Anzeige für Web-App (web_vorlage.html) und Claude-Seite (seite_vorlage.html).
+// Wird beim Bauen an die Stelle /*__ANZEIGE__*/ eingesetzt – Änderungen nur hier machen.
 const eur=v=>(typeof v!=="number"||!isFinite(v))?"–":v.toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";
+const eur0=v=>(typeof v!=="number"||!isFinite(v))?"–":v.toLocaleString("de-DE",{maximumFractionDigits:2})+" €";
 const dm=s=>{if(typeof s!=="string")return"";const[y,m,d]=s.split("-");return d+"."+m+"."};
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const safeUrl=u=>/^https:\/\//.test(u||"")?esc(u):null;
-const STAT={kaufen:["Jetzt kaufen","--good"],warten:["Warten","--warn"],letzter:["Jetzt bestellen","--bad"],neu:["Neu beobachtet","--muted"],gekauft:["Gekauft","--done"]};
+const STAT={kaufen:["Jetzt kaufen","--good"],warten:["Warten","--warn"],letzter:["Jetzt bestellen","--bad"],neu:["Neu beobachtet","--muted"],
+  gekauft:["Gekauft","--done"],gemeldet:["Gekauft gemeldet","--done"],erledigt:["Anderes Geschenk gekauft","--done"]};
 function tage(s){const t=new Date();t.setHours(0,0,0,0);return Math.round((new Date(s+"T00:00:00")-t)/864e5)}
+const zahl=v=>typeof v==="number"&&isFinite(v);
+
+function chart(v){
+  if(!Array.isArray(v)||v.length<2) return `<div class="small">Verlauf erscheint ab der zweiten Messung.</div>`;
+  const W=320,H=110,px=6,py=10,ps=v.map(x=>x.preis),mn=Math.min(...ps),mx=Math.max(...ps),r=(mx-mn)||1;
+  const X=i=>px+i*(W-2*px)/(v.length-1),Y=p=>py+(H-2*py)*(1-(p-mn)/r);
+  const d=v.map((x,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(x.preis).toFixed(1)).join(" ");
+  const li=v.length-1;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Preisverlauf">
+   <line x1="${px}" x2="${W-px}" y1="${Y(mn)}" y2="${Y(mn)}" stroke="var(--line)" stroke-dasharray="3 3"/>
+   <path d="${d} L${X(li)} ${H} L${X(0)} ${H}Z" fill="var(--accent)" opacity=".12"/>
+   <path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2"/>
+   <circle cx="${X(li)}" cy="${Y(v[li].preis)}" r="4" fill="var(--accent)"/></svg>
+   <div class="axis"><span>${esc(dm(v[0].datum))}</span><span>Tief ${eur(mn)} · Hoch ${eur(mx)}</span><span>${esc(dm(v[li].datum))}</span></div>`;
+}
+
+// status: "gemeldet" = auf diesem Gerät/als Notiz als gekauft gemeldet, Claude trägt es noch ein
+function karte(p,status,opt){
+  let[s,c]=STAT[status]||STAT.warten;
+  if(status==="gemeldet"&&opt.gemeldetText)s=opt.gemeldetText;
+  const fertig=status==="gekauft"||status==="gemeldet"||status==="erledigt";
+  const links=p.links||{};
+  const best=safeUrl(p.link)||safeUrl(links.idealo);
+  const ueber=zahl(p.budget)&&zahl(p.preis)&&p.preis>p.budget;
+  const shops=(p.shops||[]).map(({shop:n,preis:v,link:l,ohne_versand:ov,klein})=>{const u=safeUrl(l);
+    const lab=esc(n)+(klein?' <span class="small">(kleinerer Shop)</span>':"")+(ov?' <span class="small">(Shopseite, ggf. zzgl. Versand)</span>':"");
+    return `<div class="shop">${u?`<a href="${u}" target="_blank" rel="noopener noreferrer">${lab}</a>`:`<div>${lab}</div>`}<span class="pr">${eur(v)}</span></div>`}).join("");
+  const extra=[["idealo","idealo"],["amazon","Amazon"],["mediamarkt","MediaMarkt"],["thalia","Thalia"]].filter(([k])=>safeUrl(links[k]))
+    .map(([k,n])=>`<a class="btn" href="${safeUrl(links[k])}" target="_blank" rel="noopener noreferrer">${n}</a>`).join("");
+  const keepa=p.asin&&/^[A-Z0-9]{10}$/.test(p.asin)?`<a class="btn" href="https://keepa.com/#!product/3-${p.asin}" target="_blank" rel="noopener noreferrer">Amazon-Langzeitverlauf (Keepa)</a>`:"";
+  const g=p.gross_best, gu=g&&safeUrl(g.link);
+  const grossZeile=p.shop_klein&&g?`<div class="small">Günstigster großer Shop: ${gu?`<a class="link" href="${gu}" target="_blank" rel="noopener noreferrer">${esc(g.shop)} ↗</a>`:esc(g.shop)} für ${eur(g.preis)}</div>`:"";
+  const meta=[
+    p.gefunden?"automatisch gefunden: „"+esc(p.gefunden)+"“":"",
+    p.idee?"Idee: "+esc(p.idee):"",
+    p.shop?"günstigst bei "+esc(p.shop)+(p.shop_klein?" (kleinerer Shop)":""):"",
+    fertig?"":esc(p.grund),
+    p.preis_datum&&opt.stand&&p.preis_datum!==opt.stand?"Preis vom "+esc(dm(p.preis_datum)):""].filter(Boolean).join(" · ");
+  const budget=zahl(p.budget)?`<div class="bud${ueber&&!fertig?" ueber":""}">Budget ${eur0(p.budget)}${ueber?` · ${eur(p.preis-p.budget)} drüber`:zahl(p.preis)?" · passt":""}</div>`:"";
+  const variante=p.variante_pruefen&&!fertig?`<div class="m warnzeile">⚠ Variante prüfen: ${esc(p.variante_pruefen)}</div>`:"";
+  const knopf=!fertig&&opt.gekauft?`<button class="btn ok" type="button" data-gekauft="${esc(p.id)}">✓ Hab ich gekauft</button>`:"";
+  return `<details data-id="${esc(p.id)}"${opt.offen.has(String(p.id))?" open":""}${fertig?' class="fertig"':""}><summary>
+   <div class="t">${esc(p.name)}</div><div class="p${ueber&&!fertig?" ueber":""}">${eur(p.preis)}</div>
+   ${budget?`<div class="m">${budget}</div>`:""}
+   <div class="m">${meta}</div>${variante}
+   <div class="st" style="color:var(${c})"><span>${s}${!fertig&&p.kaufen_bis?" – kaufen bis "+esc(dm(p.kaufen_bis)):""}${zahl(p.wunschpreis)&&!fertig?" · Wunschpreis "+eur(p.wunschpreis):""}</span><span class="more">Details ▾</span></div></summary>
+   <div class="body"><div class="chart">${chart(p.verlauf)}</div>
+   ${best?`<div class="btns"><a class="btn main" href="${best}" target="_blank" rel="noopener noreferrer">Zum günstigsten Shop${p.shop?" – "+esc(p.shop):""}</a></div>`:""}
+   ${grossZeile}
+   ${shops?`<div class="shops">${shops}</div>`:""}
+   <div class="btns">${extra}${keepa}</div>
+   ${knopf?`<div class="btns">${knopf}</div>`:""}</div></details>`;
+}
+
+// opt: {gemeldet:Set(ids), gekauft:bool (Knopf zeigen), offen:Set(ids)}
+function anzeigeHTML(D,opt){
+  const alt=D.stand?Math.floor((Date.now()-new Date(D.stand+"T00:00:00"))/864e5):null;
+  let hin="";
+  if(alt!==null&&alt>8) hin+=`<div class="hinweis">Die letzte Prüfung ist ${alt} Tage her – lief der Mac?</div>`;
+  if(Array.isArray(D.fehler)&&D.fehler.length) hin+=`<div class="hinweis">Letzte Prüfung mit ${D.fehler.length} Problem(en): ${D.fehler.map(esc).join("; ")}</div>`;
+  const ALLE=Array.isArray(D.produkte)?D.produkte:[];
+  const gem=opt.gemeldet||new Set();
+  // Status je Produkt: gekauft/gemeldet; Geschwister desselben Anlasses gelten dann als erledigt
+  const key=p=>JSON.stringify([p.datum,p.person]);
+  const fertigeAnl=new Set(ALLE.filter(p=>p.datum&&(p.status==="gekauft"||gem.has(String(p.id)))).map(key));
+  const st=p=>p.status==="gekauft"?"gekauft":gem.has(String(p.id))?"gemeldet":(p.datum&&fertigeAnl.has(key(p)))?"erledigt":p.status;
+  const P=ALLE.filter(p=>p.datum), M=ALLE.filter(p=>!p.datum&&p.status!=="gekauft");
+  const A=Array.isArray(D.anlaesse)?D.anlaesse:[];
+  const merk=`<section class="merk"><h2>Für mich – Merkliste</h2><div class="small">Sachen, deren Preis du einfach im Blick behalten willst – ohne Anlass. Gemeldet wird ein neuer Tiefstpreis oder dein Wunschpreis. Neue Einträge über „Notiz an Claude“.</div>
+   <div style="margin-top:10px">${M.length?M.map(p=>karte(p,st(p),opt)).join(""):`<div class="leer">Noch nichts auf deiner Merkliste.</div>`}</div></section>`;
+  if(!P.length&&!A.length) return hin+merk+`<div class="leer"><b>Noch keine Produkte beobachtet.</b><br>Nenn Claude die Interessen einer Person (z. B. „mag Kochen und Pflanzen“) – drei Vorschläge erscheinen hier nach der nächsten Prüfung.</div>`;
+  const ohne=A.filter(a=>!a.produkte&&a.status!=="geplant");
+  const infos=A.filter(a=>a.infos&&!fertigeAnl.has(JSON.stringify([a.datum,a.person])));
+  const teuer=P.filter(p=>!["gekauft","gemeldet","erledigt"].includes(st(p))&&zahl(p.budget)&&zahl(p.preis)&&p.preis>p.budget);
+  let box="";
+  if(ohne.length||infos.length||teuer.length){
+    box=`<section class="offen">${ohne.length?`<div><b>Noch ohne Geschenk:</b> ${ohne.map(a=>esc(a.person)+" ("+esc(dm(a.datum))+")").join(", ")}</div>`:""}
+    ${infos.length?`<div><b>Claude braucht Infos:</b><ul>${infos.map(a=>`<li>${esc(a.person)}: ${esc(a.infos)}</li>`).join("")}</ul></div>`:""}
+    ${teuer.length?`<div><b>Über Budget:</b><ul>${teuer.map(p=>`<li>${esc(p.name)} (${esc(p.person)}): ${eur(p.preis)} statt bis ${eur0(p.budget)}</li>`).join("")}</ul><span class="small">Claude sucht dafür günstigere Alternativen.</span></div>`:""}</section>`;
+  }
+  const g={};
+  A.forEach(a=>{const k=JSON.stringify([a.datum,a.person]);g[k]=g[k]||{a:null,p:[]};g[k].a=a});
+  P.forEach(p=>{const k=key(p);g[k]=g[k]||{a:null,p:[]};g[k].p.push(p)});
+  return hin+box+Object.keys(g).sort().map(k=>{const[d,who]=JSON.parse(k),n=tage(d),x=g[k];
+   const occ=x.a?x.a.anlass:(x.p[0]&&x.p[0].anlass)||"";
+   const bud=[...new Set(x.p.map(p=>p.budget).filter(zahl))];
+   const fertig=fertigeAnl.has(k);
+   let notes="";
+   if(fertig) notes+=`<div class="anote gut">✓ Geschenk gekauft</div>`;
+   if(bud.length===1&&!fertig) notes+=`<div class="anote">Budget bis ${eur0(bud[0])}</div>`;
+   if(x.a&&x.a.notiz)notes+=`<div class="anote">${x.a.status==="geplant"?"Geplant: ":""}${esc(x.a.notiz)}</div>`;
+   if(x.a&&x.a.infos&&!fertig)notes+=`<div class="anote need">Infos gebraucht: ${esc(x.a.infos)}</div>`;
+   const leer=!x.p.length?(x.a&&x.a.status==="geplant"?"":`<div class="ohne">Noch kein Geschenk – sobald du Claude Infos gibst, erscheinen hier drei Vorschläge mit Preisen.</div>`):"";
+   return `<section class="occ"><div class="dot"></div><div class="when">${n===0?"heute":n===1?"morgen":n<0?"vorbei":"in "+n+" Tagen"} · ${esc(dm(d))}</div><div class="who">${esc(who)} – ${esc(occ)}</div>${notes}${leer}${x.p.map(p=>karte(p,st(p),opt)).join("")}</section>`}).join("")+merk;
+}
+
 
 // ---- Schlüssel: aus #k=… (einmalig) oder Eingabefeld, dann nur in localStorage dieses Geräts
 function keyAus(text){const m=String(text||"").trim().match(/(?:#k=)?([A-Za-z0-9_-]{43})=?$/);return m?m[1]:null}
@@ -150,72 +257,28 @@ function zeigeKey(msg){$("merkAdd").hidden=true;$("stand").textContent="Verschl�
 $("keyOk").addEventListener("click",()=>{const k=keyAus($("keyIn").value);if(!k){zeigeKey("Das sieht nicht wie ein Schlüssel aus. Bitte den ganzen Link einfügen.");return}store.set(k);$("keyIn").value="";laden()});
 $("keyWeg").addEventListener("click",()=>{store.del();D=null;zeigeKey()});
 
-// ---- Anzeige
-function chart(v){
-  if(!Array.isArray(v)||v.length<2) return `<div class="small">Verlauf erscheint ab der zweiten Messung.</div>`;
-  const W=320,H=110,px=6,py=10,ps=v.map(x=>x.preis),mn=Math.min(...ps),mx=Math.max(...ps),r=(mx-mn)||1;
-  const X=i=>px+i*(W-2*px)/(v.length-1),Y=p=>py+(H-2*py)*(1-(p-mn)/r);
-  const d=v.map((x,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(x.preis).toFixed(1)).join(" ");
-  const li=v.length-1;
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Preisverlauf">
-   <line x1="${px}" x2="${W-px}" y1="${Y(mn)}" y2="${Y(mn)}" stroke="var(--line)" stroke-dasharray="3 3"/>
-   <path d="${d} L${X(li)} ${H} L${X(0)} ${H}Z" fill="var(--accent)" opacity=".12"/>
-   <path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2"/>
-   <circle cx="${X(li)}" cy="${Y(v[li].preis)}" r="4" fill="var(--accent)"/></svg>
-   <div class="axis"><span>${esc(dm(v[0].datum))}</span><span>Tief ${eur(mn)} · Hoch ${eur(mx)}</span><span>${esc(dm(v[li].datum))}</span></div>`;
-}
-function karte(p){
-  const[s,c]=STAT[p.status]||STAT.warten;
-  const links=p.links||{};
-  const best=safeUrl(p.link)||safeUrl(links.idealo);
-  const shops=(p.shops||[]).map(({shop:n,preis:v,link:l,ohne_versand:ov})=>{const u=safeUrl(l);const lab=esc(n)+(ov?' <span class="small">(Shopseite, ggf. zzgl. Versand)</span>':"");return `<div class="shop">${u?`<a href="${u}" target="_blank" rel="noopener noreferrer">${lab}</a>`:lab}<span>${eur(v)}</span></div>`}).join("");
-  const extra=[["idealo","idealo"],["amazon","Amazon"],["mediamarkt","MediaMarkt"],["thalia","Thalia"]].filter(([k])=>safeUrl(links[k]))
-    .map(([k,n])=>`<a class="btn" href="${safeUrl(links[k])}" target="_blank" rel="noopener noreferrer">${n}</a>`).join("");
-  const keepa=p.asin&&/^[A-Z0-9]{10}$/.test(p.asin)?`<a class="btn" href="https://keepa.com/#!product/3-${p.asin}" target="_blank" rel="noopener noreferrer">Amazon-Langzeitverlauf (Keepa)</a>`:"";
-  return `<details data-id="${esc(p.id)}"${OFFEN.has(String(p.id))?" open":""}${p.status==="gekauft"?' style="opacity:.6"':""}><summary>
-   <div class="t">${esc(p.name)}</div><div class="p">${eur(p.preis)}</div>
-   <div class="m">${p.gefunden?"automatisch gefunden: „"+esc(p.gefunden)+"“ · ":""}${p.idee?"Idee: "+esc(p.idee)+" · ":""}${p.shop?"günstigst bei "+esc(p.shop)+" · ":""}${esc(p.grund)}${typeof p.budget==="number"&&typeof p.preis==="number"&&p.preis>p.budget?` · <b style="color:var(--bad)">über Budget (${eur(p.budget)})</b>`:""}${p.preis_datum&&D.stand&&p.preis_datum!==D.stand?" · Preis vom "+esc(dm(p.preis_datum)):""}</div>
-   <div class="st" style="color:var(${c})"><span>${s}${p.status!=="gekauft"&&p.kaufen_bis?" – kaufen bis "+esc(dm(p.kaufen_bis)):""}${typeof p.wunschpreis==="number"?" · Wunschpreis "+eur(p.wunschpreis):""}</span><span class="more">Details ▾</span></div></summary>
-   <div class="body"><div class="chart">${chart(p.verlauf)}</div>
-   ${best?`<div class="btns"><a class="btn main" href="${best}" target="_blank" rel="noopener noreferrer">Zum günstigsten Shop${p.shop?" – "+esc(p.shop):""}</a></div>`:""}
-   ${shops?`<div class="shops">${shops}</div>`:""}
-   <div class="btns">${extra}${keepa}</div></div></details>`;
-}
+// ---- Anzeige (gemeinsamer Teil: anzeige.js)
+// „Hab ich gekauft“: sofort auf diesem Gerät merken, dann über die Claude-Seite an Claude melden
+const LS_G="preiswaechter-gemeldet";
+function gemeldet(){try{const o=JSON.parse(localStorage.getItem(LS_G)||"{}");return o&&typeof o==="object"?o:{}}catch(e){return{}}}
+function gemeldetSetzen(o){try{localStorage.setItem(LS_G,JSON.stringify(o))}catch(e){}}
 function render(){
   if(!D)return;
   $("merkAdd").hidden=false;
   const alt=D.stand?Math.floor((Date.now()-new Date(D.stand+"T00:00:00"))/864e5):null;
   $("stand").textContent=D.stand?`Stand: ${dm(D.stand)}${D.stand.slice(0,4)} · nächste Prüfung in ca. ${Math.max(0,7-alt)} Tagen`:"Noch keine Prüfung gelaufen";
-  let hin="";
-  if(alt!==null&&alt>8) hin+=`<div class="hinweis">Die letzte Prüfung ist ${alt} Tage her – lief der Mac?</div>`;
-  if(Array.isArray(D.fehler)&&D.fehler.length) hin+=`<div class="hinweis">Letzte Prüfung mit ${D.fehler.length} Problem(en): ${D.fehler.map(esc).join("; ")}</div>`;
+  // Meldungen aufräumen: vom Mac bestätigt (gekauft) oder älter als 14 Tage
+  const g=gemeldet(),ids=new Set((D.produkte||[]).map(p=>String(p.id)));
+  for(const k of Object.keys(g)){const p=(D.produkte||[]).find(x=>String(x.id)===k);if(!ids.has(k)||(p&&p.status==="gekauft")||Date.now()-g[k]>14*864e5)delete g[k]}
+  gemeldetSetzen(g);
   OFFEN=new Set([...document.querySelectorAll("details[open]")].map(d=>d.dataset.id));
-  const ALLE=Array.isArray(D.produkte)?D.produkte:[];
-  const P=ALLE.filter(p=>p.datum), M=ALLE.filter(p=>!p.datum);
-  const A=Array.isArray(D.anlaesse)?D.anlaesse:[];
-  const merk=`<section class="merk"><h2>Für mich – Merkliste</h2><div class="small">Sachen, deren Preis du einfach im Blick behalten willst – ohne Anlass. Gemeldet wird ein neuer Tiefstpreis oder dein Wunschpreis. Neue Einträge über „Notiz an Claude“ unten.</div>
-   <div style="margin-top:10px">${M.length?M.map(karte).join(""):`<div class="leer">Noch nichts auf deiner Merkliste.</div>`}</div>
-</section>`;
-  if(!P.length&&!A.length){$("liste").innerHTML=hin+merk+`<div class="leer"><b>Noch keine Produkte beobachtet.</b><br>Nenn Claude die Interessen einer Person (z. B. „mag Kochen und Pflanzen“) – drei Vorschläge erscheinen hier nach der nächsten Prüfung.</div>`;return}
-  // Übersicht: wer hat noch kein Geschenk, wozu braucht Claude Infos
-  const ohne=A.filter(a=>!a.produkte&&a.status!=="geplant");
-  const infos=A.filter(a=>a.infos);
-  let box="";
-  if(ohne.length||infos.length){
-    box=`<section class="offen">${ohne.length?`<div><b>Noch ohne Geschenk:</b> ${ohne.map(a=>esc(a.person)+" ("+esc(dm(a.datum))+")").join(", ")}</div>`:""}
-    ${infos.length?`<div><b>Claude braucht Infos:</b><ul>${infos.map(a=>`<li>${esc(a.person)}: ${esc(a.infos)}</li>`).join("")}</ul></div>`:""}</section>`;
-  }
-  const g={};
-  A.forEach(a=>{const k=JSON.stringify([a.datum,a.person]);g[k]=g[k]||{a:null,p:[]};g[k].a=a});
-  P.forEach(p=>{const k=JSON.stringify([p.datum,p.person]);g[k]=g[k]||{a:null,p:[]};g[k].p.push(p)});
-  $("liste").innerHTML=hin+box+Object.keys(g).sort().map(k=>{const[d,who]=JSON.parse(k),n=tage(d),x=g[k];
-   const occ=x.a?x.a.anlass:(x.p[0]&&x.p[0].anlass)||"";
-   let notes="";
-   if(x.a&&x.a.notiz)notes+=`<div class="anote">${x.a.status==="geplant"?"Geplant: ":""}${esc(x.a.notiz)}</div>`;
-   if(x.a&&x.a.infos)notes+=`<div class="anote need">Infos gebraucht: ${esc(x.a.infos)}</div>`;
-   const leer=!x.p.length?(x.a&&x.a.status==="geplant"?"":`<div class="ohne">Noch kein Geschenk – sobald du Claude Infos gibst, erscheinen hier drei Vorschläge mit Preisen.</div>`):"";
-   return `<section class="occ"><div class="dot"></div><div class="when">${n===0?"heute":n===1?"morgen":n<0?"vorbei":"in "+n+" Tagen"} · ${esc(dm(d))}</div><div class="who">${esc(who)} – ${esc(occ)}</div>${notes}${leer}${x.p.map(karte).join("")}</section>`}).join("")+merk;
+  $("liste").innerHTML=anzeigeHTML(D,{gemeldet:new Set(Object.keys(g)),gekauft:true,offen:OFFEN,stand:D.stand,gemeldetText:"Gemerkt – bitte auf der Claude-Seite bestätigen"});
 }
+$("liste").addEventListener("click",e=>{
+  const b=e.target.closest("[data-gekauft]");if(!b)return;
+  const id=b.dataset.gekauft,g=gemeldet();g[id]=Date.now();gemeldetSetzen(g);render();
+  window.open("https://claude.ai/artifact/TA98CweWaVU7rDdrZaniwG#gekauft="+encodeURIComponent(id),"_blank","noopener,noreferrer");
+});
 
 // ---- Installationshinweis (nur iPhone/iPad in Safari, nicht installiert)
 (function(){
